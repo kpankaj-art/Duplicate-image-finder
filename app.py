@@ -5,10 +5,9 @@ from pptx import Presentation
 from PIL import Image
 import imagehash
 
-# Compact Page Layout
 st.set_page_config(page_title="PPT Image Inspector", layout="wide", initial_sidebar_state="expanded")
 
-# CSS styling for clean look
+# CSS styling for clean & compact look
 st.markdown("""
     <style>
     .block-container {padding-top: 1.5rem; padding-bottom: 0rem;}
@@ -20,7 +19,7 @@ st.markdown("""
 
 st.title("🖼️ PPT Image Duplicate & Search Tool")
 
-# --- SIDEBAR (Controls) ---
+# --- SIDEBAR ---
 with st.sidebar:
     st.header("⚙️ Controls")
     uploaded_file = st.file_uploader("1. PPTX File Upload", type=["pptx"])
@@ -45,7 +44,6 @@ else:
                             image_bytes = shape.image.blob
                             img = Image.open(io.BytesIO(image_bytes))
                             
-                            # Original image for full view, small image for visual hashing
                             small_img = img.resize((128, 128))
                             img_hash = str(imagehash.average_hash(small_img))
                             
@@ -59,10 +57,9 @@ else:
                         except Exception:
                             continue
 
-        # Tab layout for clean display
         tab1, tab2 = st.tabs(["📋 PPT Duplicates Report", "🔍 Specific Image Search"])
 
-        # TAB 1: Duplicate Images Report
+        # TAB 1: Duplicates Report
         with tab1:
             hashes = collections.defaultdict(list)
             for item in ppt_images:
@@ -74,12 +71,12 @@ else:
                     duplicates_found = True
                     st.warning(f"**Duplicate Found** ({len(locations)} occurrences)")
                     
-                    c1, c2 = st.columns([1.5, 3.5])
+                    # Columns width small size thumbnail ke liye adjusting [1, 5]
+                    c1, c2 = st.columns([1, 5])
                     with c1:
-                        # Displaying Thumbnail
-                        st.image(locations[0]["original_image"], use_container_width=True)
+                        # Fixed 120px width for small thumbnail
+                        st.image(locations[0]["original_image"], width=120)
                         
-                        # Clickable Expander for Full Screen Large View
                         with st.expander("🔍 View Full Size Image"):
                             st.image(locations[0]["original_image"], use_container_width=True)
 
@@ -91,7 +88,7 @@ else:
             if not duplicates_found:
                 st.success("No internal duplicate images found in this PPT.")
 
-        # TAB 2: Custom Search Result
+        # TAB 2: Custom Search
         with tab2:
             if search_image_file is None:
                 st.info("👈 Upload an image in the sidebar to search for it inside this PPT.")
@@ -107,11 +104,10 @@ else:
                 
                 if matches:
                     st.success(f"**Match Found!** Found in {len(matches)} location(s):")
-                    c1, c2 = st.columns([1.5, 3.5])
+                    c1, c2 = st.columns([1, 5])
                     with c1:
-                        st.image(target_img, caption="Searched Image", use_container_width=True)
+                        st.image(target_img, caption="Searched Image", width=120)
                         
-                        # Clickable Expander for Full Screen Large View
                         with st.expander("🔍 View Full Size Image"):
                             st.image(target_img, use_container_width=True)
 
