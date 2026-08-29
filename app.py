@@ -8,19 +8,37 @@ import imagehash
 
 st.set_page_config(page_title="PPT Image Inspector", layout="wide", initial_sidebar_state="expanded")
 
-# CSS Styling
+# Custom CSS for Lightbox (Same Tab Fullscreen View)
 st.markdown("""
     <style>
     .block-container {padding-top: 1.5rem; padding-bottom: 0rem;}
     [data-testid="stSidebar"] {padding-top: 0rem;}
     h1 {font-size: 1.8rem !important; margin-bottom: 0.5rem;}
     .stAlert {padding: 0.5rem 1rem; margin-bottom: 0.5rem;}
+    
+    /* Image Lightbox Styling */
+    .zoom-img {
+        width: 120px;
+        border-radius: 5px;
+        cursor: pointer;
+        transition: transform 0.25s ease;
+    }
+    .zoom-img:focus {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%) scale(5);
+        max-width: 80vw;
+        max-height: 80vh;
+        z-index: 99999;
+        box-shadow: 0 0 20px rgba(0,0,0,0.8);
+        outline: none;
+    }
     </style>
 """, unsafe_allow_html=True)
 
 st.title("🖼️ PPT Image Duplicate & Search Tool")
 
-# Function to convert PIL Image to base64 for direct browser opening
 def get_image_as_base64(img):
     buffered = io.BytesIO()
     img.save(buffered, format="PNG")
@@ -81,12 +99,9 @@ else:
                     
                     c1, c2 = st.columns([1, 5])
                     with c1:
-                        # Clickable image: click karte hi browser new tab me HD full image khulegi
                         b64_img = get_image_as_base64(locations[0]["original_image"])
                         st.markdown(
-                            f'<a href="{b64_img}" target="_blank">'
-                            f'<img src="{b64_img}" width="120" style="border-radius: 5px; cursor: pointer;" title="Click to open full image">'
-                            f'</a>', 
+                            f'<img src="{b64_img}" class="zoom-img" tabindex="0" title="Click to view full, Click away to close">', 
                             unsafe_allow_html=True
                         )
 
@@ -118,9 +133,7 @@ else:
                     with c1:
                         b64_target = get_image_as_base64(target_img)
                         st.markdown(
-                            f'<a href="{b64_target}" target="_blank">'
-                            f'<img src="{b64_target}" width="120" style="border-radius: 5px; cursor: pointer;" title="Click to open full image">'
-                            f'</a>', 
+                            f'<img src="{b64_target}" class="zoom-img" tabindex="0" title="Click to view full, Click away to close">', 
                             unsafe_allow_html=True
                         )
 
