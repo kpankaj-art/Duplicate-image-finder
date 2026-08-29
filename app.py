@@ -8,7 +8,7 @@ import streamlit as st
 from pptx import Presentation
 from PIL import Image
 
-st.set_page_config(page_title="Smart Image Matcher", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="Strict Image Matcher (90%-100%)", layout="wide", initial_sidebar_state="expanded")
 
 st.markdown("""
     <style>
@@ -40,7 +40,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-st.title("🖼️ Smart Feature-Based Image Search")
+st.title("🖼️ Strict 90%-100% Exact Image Matcher")
 
 def get_thumbnail_base64(img, max_size=(300, 300)):
     thumb = img.copy()
@@ -52,27 +52,24 @@ def get_thumbnail_base64(img, max_size=(300, 300)):
     img_str = base64.b64encode(buffered.getvalue()).decode()
     return f"data:image/jpeg;base64,{img_str}"
 
-# Convert PIL Image to OpenCV Grayscale
 def pil_to_cv2(pil_img):
     if pil_img.mode in ("RGBA", "P"):
         pil_img = pil_img.convert("RGB")
     open_cv_image = np.array(pil_img)
     return cv2.cvtColor(open_cv_image, cv2.COLOR_RGB2GRAY)
 
-# ORB Feature Descriptor Extractor
 def get_features(cv_img):
     orb = cv2.ORB_create(nfeatures=500)
     kp, des = orb.detectAndCompute(cv_img, None)
     return des
 
-# Compare two sets of feature descriptors
 def compare_features(des1, des2):
     if des1 is None or des2 is None:
         return 0
     bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
     matches = bf.match(des1, des2)
-    # Count strong feature matches
-    good_matches = [m for m in matches if m.distance < 45]
+    # Strict matching distance filter
+    good_matches = [m for m in matches if m.distance < 40]
     return len(good_matches)
 
 with st.sidebar:
@@ -121,7 +118,7 @@ else:
         status_text.empty()
         gc.collect()
 
-        st.subheader("🔍 Custom Image Match Result")
+        st.subheader("🔍 90%-100% Exact Match Result")
 
         if search_image_file is None:
             st.info("👈 Upload an image in the sidebar to search.")
@@ -134,12 +131,16 @@ else:
             matches = []
             for item in ppt_images:
                 match_score = compare_features(target_des, item["descriptors"])
-                # Match threshold: If 25+ unique visual features match
-                if match_score >= 25:
+                
+                # STRICT THRESHOLD: Sirf 40+ matched features wale (90%-100% match) accept honge
+                if match_score >= 40:
                     matches.append((item, match_score))
             
+            # Sort matches so highest score comes on top
+            matches.sort(key=lambda x: x[1], reverse=True)
+
             if matches:
-                st.success(f"**Exact Match Found!** Found in {len(matches)} location(s):")
+                st.success(f"**Exact 90%-100% Match Found!** Found in {len(matches)} location(s):")
                 c1, c2 = st.columns([1, 5])
                 with c1:
                     st.markdown(
@@ -149,9 +150,9 @@ else:
 
                 with c2:
                     for match_item, score in matches:
-                        st.write(f"• **Slide {match_item['slide']}** → Image #{match_item['img_num']} *(Match Confidence: {score} features)*")
+                        st.write(f"• **Slide {match_item['slide']}** → Image #{match_item['img_num']} *(Match Score: {score} features)*")
             else:
-                st.error("❌ Yeh image is PPT me **nahi mili**.")
+                st.error("❌ Koi bhi **90%-100% exact match** nahi mila.")
 
     except Exception as e:
         st.error(f"Error processing file: {e}")
