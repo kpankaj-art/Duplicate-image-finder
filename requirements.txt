@@ -1,5 +1,5 @@
-gdown
 streamlit
 python-pptx
-pillow
+Pillow
 imagehash
+pytesseract
