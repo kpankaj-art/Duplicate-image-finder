@@ -5,108 +5,107 @@ from pptx import Presentation
 from PIL import Image
 import imagehash
 
-st.set_page_config(page_title="PPT Image Finder", layout="wide")
+# Compact Page Layout
+st.set_page_config(page_title="PPT Image Inspector", layout="wide", initial_sidebar_state="expanded")
 
-st.title("PPT Duplicate Image Finder (Up to 2GB)")
-st.write("Apni heavy PPT file direct upload karein aur duplicate images scan karein.")
+# CSS styling for clean & compact look
+st.markdown("""
+    <style>
+    .block-container {padding-top: 1.5rem; padding-bottom: 0rem;}
+    [data-testid="stSidebar"] {padding-top: 0rem;}
+    h1 {font-size: 1.8rem !important; margin-bottom: 0.5rem;}
+    .stAlert {padding: 0.5rem 1rem; margin-bottom: 0.5rem;}
+    </style>
+""", unsafe_allow_html=True)
 
-# 1. Main PPT Upload Box (Top)
-uploaded_file = st.file_uploader("PPTX File Upload Karein", type=["pptx"])
+st.title("🖼️ PPT Image Duplicate & Search Tool")
 
-st.divider()
+# --- SIDEBAR (Controls) ---
+with st.sidebar:
+    st.header("⚙️ Controls")
+    uploaded_file = st.file_uploader("1. PPTX File Upload", type=["pptx"])
+    st.divider()
+    search_image_file = st.file_uploader("2. Search Specific Image (Optional)", type=["jpg", "jpeg", "png", "webp"])
 
-# 2. Optional Single Image Search Box (Bottom)
-st.subheader("🔍 Specific Image Finder (Optional)")
-st.write("Agar aapko PPT me koi alag se specific image dhoondni hai, toh use niche upload karein:")
-
-search_image_file = st.file_uploader(
-    "Specific Image Upload Karein (Optional)", 
-    type=["jpg", "jpeg", "png", "webp"],
-    key="single_img_search"
-)
-
-# Process Logic
-if uploaded_file is not None:
-    st.info("PPT scan ho rahi hai, kripya thoda wait karein...")
-    
+# --- MAIN DASHBOARD ---
+if uploaded_file is None:
+    st.info("👈 Please upload a PPTX file from the sidebar to start scanning.")
+else:
     try:
-        prs = Presentation(uploaded_file)
-        ppt_images = []
+        with st.spinner("Scanning PPT..."):
+            prs = Presentation(uploaded_file)
+            ppt_images = []
 
-        # Extract all images from PPT
-        for slide_index, slide in enumerate(prs.slides):
-            img_count = 0
-            for shape in slide.shapes:
-                if shape.shape_type == 13:  # Picture shape
-                    img_count += 1
-                    try:
-                        image_bytes = shape.image.blob
-                        img = Image.open(io.BytesIO(image_bytes))
-                        small_img = img.resize((128, 128))
-                        img_hash = str(imagehash.average_hash(small_img))
-                        
-                        ppt_images.append({
-                            "slide": slide_index + 1,
-                            "img_num": img_count,
-                            "hash": img_hash,
-                            "image": small_img
-                        })
-                    except Exception:
-                        continue
+            for slide_index, slide in enumerate(prs.slides):
+                img_count = 0
+                for shape in slide.shapes:
+                    if shape.shape_type == 13:
+                        img_count += 1
+                        try:
+                            image_bytes = shape.image.blob
+                            img = Image.open(io.BytesIO(image_bytes))
+                            small_img = img.resize((128, 128))
+                            img_hash = str(imagehash.average_hash(small_img))
+                            
+                            ppt_images.append({
+                                "slide": slide_index + 1,
+                                "img_num": img_count,
+                                "hash": img_hash,
+                                "image": small_img
+                            })
+                        except Exception:
+                            continue
 
-        # SECTION A: Specific Single Image Search (If uploaded)
-        if search_image_file is not None:
-            st.divider()
-            st.subheader("🎯 Specific Image Search Result:")
-            
-            target_img = Image.open(search_image_file)
-            target_small = target_img.resize((128, 128))
-            target_hash = str(imagehash.average_hash(target_small))
-            
-            matches = []
+        # Tab layout for clean display
+        tab1, tab2 = st.tabs(["📋 PPT Duplicates Report", "🔍 Specific Image Search"])
+
+        # TAB 1: Duplicate Images Report
+        with tab1:
+            hashes = collections.defaultdict(list)
             for item in ppt_images:
-                hash_diff = imagehash.hex_to_hash(target_hash) - imagehash.hex_to_hash(item["hash"])
-                if hash_diff <= 5:  # Similarity Threshold
-                    matches.append(item)
-            
-            if matches:
-                st.success(f"Haan! Ye Image PPT me mili hai ({len(matches)} jagah par):")
+                hashes[item["hash"]].append(item)
                 
-                col_target, col_found = st.columns([1, 3])
-                with col_target:
-                    st.image(target_img, caption="Aapki Uploaded Image", width=150)
-                
-                with col_found:
-                    for match in matches:
-                        st.write(f"• **Slide {match['slide']}** ki **Image #{match['img_num']}** me hai.")
+            duplicates_found = False
+            for img_hash, locations in hashes.items():
+                if len(locations) > 1:
+                    duplicates_found = True
+                    st.warning(f"**Duplicate Found** ({len(locations)} occurrences)")
+                    
+                    c1, c2 = st.columns([1, 4])
+                    with c1:
+                        st.image(locations[0]["image"], width=100)
+                    with c2:
+                        for loc in locations:
+                            st.write(f"• **Slide {loc['slide']}** → Image #{loc['img_num']}")
+                    st.divider()
+
+            if not duplicates_found:
+                st.success("No internal duplicate images found in this PPT.")
+
+        # TAB 2: Custom Search Result
+        with tab2:
+            if search_image_file is None:
+                st.info("👈 Upload an image in the sidebar to search for it inside this PPT.")
             else:
-                st.error("Ye Image di gayi PPT me kisi bhi slide par NAHI mili.")
-
-        # SECTION B: Overall PPT Duplicate Scan
-        st.divider()
-        st.subheader("📋 PPT Internal Duplicates Report:")
-        
-        hashes = collections.defaultdict(list)
-        for item in ppt_images:
-            hashes[item["hash"]].append(item)
-            
-        duplicates_found = False
-        for img_hash, locations in hashes.items():
-            if len(locations) > 1:
-                duplicates_found = True
-                st.warning(f"Duplicate Image Mili! ({len(locations)} baar repeat hui hai)")
+                target_img = Image.open(search_image_file)
+                target_small = target_img.resize((128, 128))
+                target_hash = str(imagehash.average_hash(target_small))
                 
-                col_img, col_details = st.columns([1, 3])
-                with col_img:
-                    st.image(locations[0]["image"], caption="Duplicate Photo", width=150)
+                matches = [
+                    item for item in ppt_images 
+                    if (imagehash.hex_to_hash(target_hash) - imagehash.hex_to_hash(item["hash"])) <= 5
+                ]
                 
-                with col_details:
-                    for loc in locations:
-                        st.write(f"• **Slide {loc['slide']}** ki **Image #{loc['img_num']}**")
-                st.divider()
-
-        if not duplicates_found:
-            st.success("PPT me aapas me koi duplicate image nahi mili.")
+                if matches:
+                    st.success(f"**Match Found!** Found in {len(matches)} location(s):")
+                    c1, c2 = st.columns([1, 4])
+                    with c1:
+                        st.image(target_img, caption="Searched Image", width=100)
+                    with c2:
+                        for match in matches:
+                            st.write(f"• **Slide {match['slide']}** → Image #{match['img_num']}")
+                else:
+                    st.error("This image was **NOT** found in the uploaded PPT.")
 
     except Exception as e:
-        st.error(f"File process karne me dikkat aayi: {e}")
+        st.error(f"Error processing file: {e}")
