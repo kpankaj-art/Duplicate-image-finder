@@ -1,6 +1,7 @@
 import collections
 import io
 import base64
+import gc
 import streamlit as st
 from pptx import Presentation
 from PIL import Image
@@ -8,13 +9,12 @@ import imagehash
 
 st.set_page_config(page_title="PPT Image Inspector", layout="wide", initial_sidebar_state="expanded")
 
-# Custom CSS: Toolbar hide rakhega aur Sidebar Collapse Button hide kar dega
+# Custom CSS: Hide Toolbar & Permanent Sidebar
 st.markdown("""
     <style>
     [data-testid="stToolbar"] {display: none !important;}
     footer {visibility: hidden !important;}
     
-    /* Permanent Sidebar: Disable Hide Arrow */
     [data-testid="stSidebarCollapseButton"] {display: none !important;}
     button[title="Collapse sidebar"] {display: none !important;}
     
@@ -23,7 +23,6 @@ st.markdown("""
     h1 {font-size: 1.8rem !important; margin-bottom: 0.5rem;}
     .stAlert {padding: 0.5rem 1rem; margin-bottom: 0.5rem;}
     
-    /* Image Lightbox Styling */
     .zoom-img {
         width: 120px;
         border-radius: 5px;
@@ -46,11 +45,14 @@ st.markdown("""
 
 st.title("🖼️ PPT Image Duplicate & Search Tool")
 
-def get_image_as_base64(img):
+# Optimized Base64 Helper for Thumbnail
+def get_thumbnail_base64(img, max_size=(300, 300)):
+    thumb = img.copy()
+    thumb.thumbnail(max_size)
     buffered = io.BytesIO()
-    img.save(buffered, format="PNG")
+    thumb.save(buffered, format="JPEG", quality=75)
     img_str = base64.b64encode(buffered.getvalue()).decode()
-    return f"data:image/png;base64,{img_str}"
+    return f"data:image/jpeg;base64,{img_str}"
 
 # --- SIDEBAR ---
 with st.sidebar:
@@ -64,31 +66,47 @@ if uploaded_file is None:
     st.info("👈 Please upload a PPTX file from the sidebar to start scanning.")
 else:
     try:
-        with st.spinner("Scanning PPT..."):
-            prs = Presentation(uploaded_file)
-            ppt_images = []
+        prs = Presentation(uploaded_file)
+        ppt_images = []
+        
+        total_slides = len(prs.slides)
+        progress_bar = st.progress(0)
+        status_text = st.empty()
 
-            for slide_index, slide in enumerate(prs.slides):
-                img_count = 0
-                for shape in slide.shapes:
-                    if shape.shape_type == 13:
-                        img_count += 1
-                        try:
-                            image_bytes = shape.image.blob
-                            img = Image.open(io.BytesIO(image_bytes))
-                            
-                            small_img = img.resize((128, 128))
+        for slide_index, slide in enumerate(prs.slides):
+            # Update Progress Bar
+            progress = (slide_index + 1) / total_slides
+            progress_bar.progress(progress)
+            status_text.text(f"Scanning Slide {slide_index + 1} of {total_slides}...")
+            
+            img_count = 0
+            for shape in slide.shapes:
+                if shape.shape_type == 13: # Picture shape
+                    img_count += 1
+                    try:
+                        image_bytes = shape.image.blob
+                        with Image.open(io.BytesIO(image_bytes)) as img:
+                            # Downsample image for hash calculation to save RAM
+                            small_img = img.resize((64, 64))
                             img_hash = str(imagehash.average_hash(small_img))
+                            
+                            # Store low-res base64 string directly to avoid memory leak
+                            b64_str = get_thumbnail_base64(img)
                             
                             ppt_images.append({
                                 "slide": slide_index + 1,
                                 "img_num": img_count,
                                 "hash": img_hash,
-                                "original_image": img,
-                                "small_image": small_img
+                                "b64_img": b64_str
                             })
-                        except Exception:
-                            continue
+                    except Exception:
+                        continue
+
+        progress_bar.empty()
+        status_text.empty()
+        
+        # Free memory
+        gc.collect()
 
         tab1, tab2 = st.tabs(["📋 PPT Duplicates Report", "🔍 Specific Image Search"])
 
@@ -106,9 +124,8 @@ else:
                     
                     c1, c2 = st.columns([1, 5])
                     with c1:
-                        b64_img = get_image_as_base64(locations[0]["original_image"])
                         st.markdown(
-                            f'<img src="{b64_img}" class="zoom-img" tabindex="0" title="Click to view full, Click away to close">', 
+                            f'<img src="{locations[0]["b64_img"]}" class="zoom-img" tabindex="0" title="Click to view full, Click away to close">', 
                             unsafe_allow_html=True
                         )
 
@@ -125,9 +142,10 @@ else:
             if search_image_file is None:
                 st.info("👈 Upload an image in the sidebar to search for it inside this PPT.")
             else:
-                target_img = Image.open(search_image_file)
-                target_small = target_img.resize((128, 128))
-                target_hash = str(imagehash.average_hash(target_small))
+                with Image.open(search_image_file) as target_img:
+                    target_small = target_img.resize((64, 64))
+                    target_hash = str(imagehash.average_hash(target_small))
+                    target_b64 = get_thumbnail_base64(target_img)
                 
                 matches = [
                     item for item in ppt_images 
@@ -138,9 +156,8 @@ else:
                     st.success(f"**Match Found!** Found in {len(matches)} location(s):")
                     c1, c2 = st.columns([1, 5])
                     with c1:
-                        b64_target = get_image_as_base64(target_img)
                         st.markdown(
-                            f'<img src="{b64_target}" class="zoom-img" tabindex="0" title="Click to view full, Click away to close">', 
+                            f'<img src="{target_b64}" class="zoom-img" tabindex="0" title="Click to view full, Click away to close">', 
                             unsafe_allow_html=True
                         )
 
