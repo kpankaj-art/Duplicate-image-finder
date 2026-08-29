@@ -8,17 +8,18 @@ import imagehash
 
 st.set_page_config(page_title="PPT Image Inspector", layout="wide", initial_sidebar_state="expanded")
 
-# CSS Fix: Sidebar toggle arrow ko allow karne ke liye header visibility enable rakhi hai
+# CSS Fix: Sidebar re-open arrow icon ko ALWAYS VISIBLE kar diya hai
 st.markdown("""
     <style>
     /* Hide top share/github/edit toolbar icons only */
     [data-testid="stToolbar"] {display: none !important;}
     footer {visibility: hidden !important;}
     
-    /* Ensure Sidebar Open Arrow button is always visible */
+    /* FORCE Sidebar Open Arrow to be ALWAYS VISIBLE at top-left */
     [data-testid="collapsedControl"] {
         display: block !important;
         visibility: visible !important;
+        z-index: 999999 !important;
     }
     
     .block-container {padding-top: 2rem; padding-bottom: 0rem;}
