@@ -6,14 +6,22 @@ from pptx import Presentation
 from PIL import Image
 import imagehash
 
-st.set_page_config(page_title="PPT Image Inspector", layout="wide", initial_sidebar_state="collapsed")
+# Sidebar ko open force karne ke liye expanded state
+st.set_page_config(page_title="PPT Image Inspector", layout="wide", initial_sidebar_state="expanded")
 
-# Custom CSS: Hide Streamlit header/footer and style controls
+# Custom CSS: Hide Streamlit header/footer + Hide Sidebar Close Button Permanently
 st.markdown("""
     <style>
+    /* Hide top share/github toolbar icons and footer */
     [data-testid="stToolbar"] {display: none !important;}
     footer {visibility: hidden !important;}
+    
+    /* DISABLE/HIDE Left Sidebar Hide/Collapse Arrow Icon completely */
+    [data-testid="stSidebarCollapseButton"] {display: none !important;}
+    button[title="Collapse sidebar"] {display: none !important;}
+    
     .block-container {padding-top: 1.5rem; padding-bottom: 0rem;}
+    [data-testid="stSidebar"] {padding-top: 0rem;}
     h1 {font-size: 1.8rem !important; margin-bottom: 0.5rem;}
     .stAlert {padding: 0.5rem 1rem; margin-bottom: 0.5rem;}
     
@@ -46,23 +54,19 @@ def get_image_as_base64(img):
     img_str = base64.b64encode(buffered.getvalue()).decode()
     return f"data:image/png;base64,{img_str}"
 
-# --- TOP UPLOAD CONTROLS (MAIN SCREEN) ---
-col_upload1, col_upload2 = st.columns(2)
-
-with col_upload1:
-    uploaded_file = st.file_uploader("1. PPTX File Upload Karein", type=["pptx"])
-
-with col_upload2:
+# --- SIDEBAR (PERMANENT OPEN) ---
+with st.sidebar:
+    st.header("⚙️ Controls")
+    uploaded_file = st.file_uploader("1. PPTX File Upload", type=["pptx"])
+    st.divider()
     search_image_file = st.file_uploader("2. Search Specific Image (Optional)", type=["jpg", "jpeg", "png", "webp"])
-
-st.divider()
 
 # --- MAIN DASHBOARD LOGIC ---
 if uploaded_file is None:
-    st.info("👆 Kripya upar diye gaye box me PPT file upload karein.")
+    st.info("👈 Please upload a PPTX file from the sidebar to start scanning.")
 else:
     try:
-        with st.spinner("PPT scan ho rahi hai..."):
+        with st.spinner("Scanning PPT..."):
             prs = Presentation(uploaded_file)
             ppt_images = []
 
@@ -121,7 +125,7 @@ else:
         # TAB 2: Custom Search
         with tab2:
             if search_image_file is None:
-                st.info("👆 Upar optional image upload box me image daalein search karne ke liye.")
+                st.info("👈 Upload an image in the sidebar to search for it inside this PPT.")
             else:
                 target_img = Image.open(search_image_file)
                 target_small = target_img.resize((128, 128))
