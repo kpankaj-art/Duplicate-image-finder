@@ -8,7 +8,7 @@ import imagehash
 
 st.set_page_config(page_title="PPT Image Inspector", layout="wide", initial_sidebar_state="expanded")
 
-# Custom CSS: Hide Streamlit Header, Toolbar, Top-Right Menu & Sidebar Collapse Arrow
+# Custom CSS: Top-right menu hide rakhega par Sidebar expand/collapse button visible rahega
 st.markdown("""
     <style>
     /* Hide top header, share button, edit button, github icon, 3 dots menu */
@@ -18,9 +18,14 @@ st.markdown("""
     [data-testid="stHeader"] {display: none !important;}
     [data-testid="stToolbar"] {display: none !important;}
     
-    /* Hide Sidebar Collapse/Expand Arrow Icon */
-    [data-testid="stSidebarCollapseButton"] {display: none !important;}
-    [data-testid="collapsedControl"] {display: none !important;}
+    /* Ensure Sidebar Collapse/Expand button is ALWAYS VISIBLE */
+    [data-testid="collapsedControl"] {
+        display: block !important;
+        position: fixed;
+        top: 10px;
+        left: 10px;
+        z-index: 99999;
+    }
     
     .block-container {padding-top: 1rem; padding-bottom: 0rem;}
     [data-testid="stSidebar"] {padding-top: 0rem;}
