@@ -7,17 +7,23 @@ import imagehash
 
 st.set_page_config(page_title="PPT Image Inspector", layout="wide", initial_sidebar_state="expanded")
 
-# CSS styling for clean & compact look
+# CSS styling for clean look
 st.markdown("""
     <style>
     .block-container {padding-top: 1.5rem; padding-bottom: 0rem;}
     [data-testid="stSidebar"] {padding-top: 0rem;}
     h1 {font-size: 1.8rem !important; margin-bottom: 0.5rem;}
     .stAlert {padding: 0.5rem 1rem; margin-bottom: 0.5rem;}
+    .stButton>button {width: 100%; padding: 2px 5px; font-size: 12px;}
     </style>
 """, unsafe_allow_html=True)
 
 st.title("🖼️ PPT Image Duplicate & Search Tool")
+
+# --- POP-UP MODAL FUNCTION ---
+@st.dialog("🖼️ Full Size Image View")
+def show_image_modal(image_data):
+    st.image(image_data, use_container_width=True)
 
 # --- SIDEBAR ---
 with st.sidebar:
@@ -66,19 +72,21 @@ else:
                 hashes[item["hash"]].append(item)
                 
             duplicates_found = False
+            idx = 0
             for img_hash, locations in hashes.items():
                 if len(locations) > 1:
                     duplicates_found = True
+                    idx += 1
                     st.warning(f"**Duplicate Found** ({len(locations)} occurrences)")
                     
-                    # Columns width small size thumbnail ke liye adjusting [1, 5]
                     c1, c2 = st.columns([1, 5])
                     with c1:
-                        # Fixed 120px width for small thumbnail
+                        # Chhoti Thumbnail
                         st.image(locations[0]["original_image"], width=120)
                         
-                        with st.expander("🔍 View Full Size Image"):
-                            st.image(locations[0]["original_image"], use_container_width=True)
+                        # Full View Button -> Click karte hi Pop-up khulega
+                        if st.button("🔍 Full View", key=f"btn_dup_{idx}"):
+                            show_image_modal(locations[0]["original_image"])
 
                     with c2:
                         for loc in locations:
@@ -108,8 +116,8 @@ else:
                     with c1:
                         st.image(target_img, caption="Searched Image", width=120)
                         
-                        with st.expander("🔍 View Full Size Image"):
-                            st.image(target_img, use_container_width=True)
+                        if st.button("🔍 Full View", key="btn_search_target"):
+                            show_image_modal(target_img)
 
                     with c2:
                         for match in matches:
