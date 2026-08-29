@@ -8,7 +8,7 @@ import imagehash
 # Compact Page Layout
 st.set_page_config(page_title="PPT Image Inspector", layout="wide", initial_sidebar_state="expanded")
 
-# CSS styling for clean & compact look
+# CSS styling for clean look
 st.markdown("""
     <style>
     .block-container {padding-top: 1.5rem; padding-bottom: 0rem;}
@@ -44,6 +44,8 @@ else:
                         try:
                             image_bytes = shape.image.blob
                             img = Image.open(io.BytesIO(image_bytes))
+                            
+                            # Original image for full view, small image for visual hashing
                             small_img = img.resize((128, 128))
                             img_hash = str(imagehash.average_hash(small_img))
                             
@@ -51,7 +53,8 @@ else:
                                 "slide": slide_index + 1,
                                 "img_num": img_count,
                                 "hash": img_hash,
-                                "image": small_img
+                                "original_image": img,
+                                "small_image": small_img
                             })
                         except Exception:
                             continue
@@ -71,9 +74,15 @@ else:
                     duplicates_found = True
                     st.warning(f"**Duplicate Found** ({len(locations)} occurrences)")
                     
-                    c1, c2 = st.columns([1, 4])
+                    c1, c2 = st.columns([1.5, 3.5])
                     with c1:
-                        st.image(locations[0]["image"], width=100)
+                        # Displaying Thumbnail
+                        st.image(locations[0]["original_image"], use_container_width=True)
+                        
+                        # Clickable Expander for Full Screen Large View
+                        with st.expander("🔍 View Full Size Image"):
+                            st.image(locations[0]["original_image"], use_container_width=True)
+
                     with c2:
                         for loc in locations:
                             st.write(f"• **Slide {loc['slide']}** → Image #{loc['img_num']}")
@@ -98,9 +107,14 @@ else:
                 
                 if matches:
                     st.success(f"**Match Found!** Found in {len(matches)} location(s):")
-                    c1, c2 = st.columns([1, 4])
+                    c1, c2 = st.columns([1.5, 3.5])
                     with c1:
-                        st.image(target_img, caption="Searched Image", width=100)
+                        st.image(target_img, caption="Searched Image", use_container_width=True)
+                        
+                        # Clickable Expander for Full Screen Large View
+                        with st.expander("🔍 View Full Size Image"):
+                            st.image(target_img, use_container_width=True)
+
                     with c2:
                         for match in matches:
                             st.write(f"• **Slide {match['slide']}** → Image #{match['img_num']}")
