@@ -8,15 +8,22 @@ import imagehash
 
 st.set_page_config(page_title="PPT Image Inspector", layout="wide", initial_sidebar_state="expanded")
 
-# Custom CSS for Lightbox (Same Tab Fullscreen View)
+# Custom CSS: Hide Streamlit Header, MainMenu, Toolbar, Footer & Image Zoom Lightbox
 st.markdown("""
     <style>
-    .block-container {padding-top: 1.5rem; padding-bottom: 0rem;}
+    /* Hide top header, share button, edit button, github icon, 3 dots menu */
+    header {visibility: hidden !important;}
+    #MainMenu {visibility: hidden !important;}
+    footer {visibility: hidden !important;}
+    [data-testid="stHeader"] {display: none !important;}
+    [data-testid="stToolbar"] {display: none !important;}
+    
+    .block-container {padding-top: 1rem; padding-bottom: 0rem;}
     [data-testid="stSidebar"] {padding-top: 0rem;}
     h1 {font-size: 1.8rem !important; margin-bottom: 0.5rem;}
     .stAlert {padding: 0.5rem 1rem; margin-bottom: 0.5rem;}
     
-    /* Image Lightbox Styling */
+    /* Image Lightbox Styling (Same Tab Fullscreen View) */
     .zoom-img {
         width: 120px;
         border-radius: 5px;
