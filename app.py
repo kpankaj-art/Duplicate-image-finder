@@ -8,26 +8,31 @@ import imagehash
 
 st.set_page_config(page_title="PPT Image Inspector", layout="wide", initial_sidebar_state="expanded")
 
-# Custom CSS: Top-right menu hide rakhega par Sidebar expand/collapse button visible rahega
+# Custom CSS: Top header hidden & Sidebar Re-open Arrow ALWAYS VISIBLE at Top-Left
 st.markdown("""
     <style>
-    /* Hide top header, share button, edit button, github icon, 3 dots menu */
-    header {visibility: hidden !important;}
+    /* Hide top header & extra menus */
     #MainMenu {visibility: hidden !important;}
     footer {visibility: hidden !important;}
-    [data-testid="stHeader"] {display: none !important;}
+    [data-testid="stHeader"] {background: transparent !important;}
     [data-testid="stToolbar"] {display: none !important;}
     
-    /* Ensure Sidebar Collapse/Expand button is ALWAYS VISIBLE */
-    [data-testid="collapsedControl"] {
+    /* Force Left Arrow Button to show prominently when Sidebar is Closed */
+    [data-testid="stSidebarCollapsedControl"] {
         display: block !important;
-        position: fixed;
-        top: 10px;
-        left: 10px;
-        z-index: 99999;
+        position: fixed !important;
+        top: 15px !important;
+        left: 15px !important;
+        z-index: 999999 !important;
+        background-color: #ff4b4b !important;
+        border-radius: 50% !important;
+        padding: 5px !important;
     }
-    
-    .block-container {padding-top: 1rem; padding-bottom: 0rem;}
+    [data-testid="stSidebarCollapsedControl"] button {
+        color: white !important;
+    }
+
+    .block-container {padding-top: 2.5rem; padding-bottom: 0rem;}
     [data-testid="stSidebar"] {padding-top: 0rem;}
     h1 {font-size: 1.8rem !important; margin-bottom: 0.5rem;}
     .stAlert {padding: 0.5rem 1rem; margin-bottom: 0.5rem;}
