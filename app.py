@@ -1,15 +1,13 @@
 import collections
 import io
 import base64
-import re
 import gc
 import streamlit as st
 from pptx import Presentation
 from PIL import Image
 import imagehash
-import pytesseract
 
-st.set_page_config(page_title="PPT Dual Matcher (Geo + Visual)", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="Exact Image Matcher", layout="wide", initial_sidebar_state="expanded")
 
 st.markdown("""
     <style>
@@ -41,7 +39,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-st.title("🖼️ PPT Geo-Tag & Visual Image Search Tool")
+st.title("🖼️ PPT Visual-Only Exact Image Search")
 
 def get_thumbnail_base64(img, max_size=(300, 300)):
     thumb = img.copy()
@@ -51,34 +49,17 @@ def get_thumbnail_base64(img, max_size=(300, 300)):
     img_str = base64.b64encode(buffered.getvalue()).decode()
     return f"data:image/jpeg;base64,{img_str}"
 
-# 1. Geo-Tag Extractor (Reads Lat/Long via OCR)
-def extract_geo_coordinates(img):
-    try:
-        w, h = img.size
-        # Crop bottom 35% where GPS Camera overlay stamp exists
-        stamp_area = img.crop((0, int(h * 0.65), w, h))
-        text = pytesseract.image_to_string(stamp_area)
-        
-        # Regex search for Lat & Long patterns (e.g., Lat 28.723053°, Long 77.854382°)
-        lat_match = re.search(r'Lat\s*([0-9]+\.[0-9]+)', text, re.IGNORECASE)
-        long_match = re.search(r'Long\s*([0-9]+\.[0-9]+)', text, re.IGNORECASE)
-        
-        if lat_match and long_match:
-            # Rounding to 4 decimal places for high precision matching
-            lat = round(float(lat_match.group(1)), 4)
-            lng = round(float(long_match.group(1)), 4)
-            return f"{lat},{lng}"
-    except Exception:
-        pass
-    return None
-
-# 2. Visual Image Hasher (Ignores GPS overlay)
-def get_visual_hash(img):
+# Purely Visual Feature Extraction (Ignores bottom 35% GPS Stamp completely)
+def get_visual_fingerprint(img):
     w, h = img.size
-    # Crop top 65% area to exclude GPS overlay
-    cropped = img.crop((0, 0, w, int(h * 0.65)))
-    small = cropped.resize((128, 128))
-    return str(imagehash.phash(small))
+    # Crop top 65% area to focus ONLY on actual scene/photos
+    clean_photo = img.crop((0, 0, w, int(h * 0.65)))
+    
+    # Precise Difference Hashing for exact matching
+    d_hash = imagehash.dhash(clean_photo.resize((128, 128)))
+    p_hash = imagehash.phash(clean_photo.resize((128, 128)))
+    
+    return d_hash, p_hash
 
 with st.sidebar:
     st.header("⚙️ Controls")
@@ -87,7 +68,7 @@ with st.sidebar:
     search_image_file = st.file_uploader("2. Search Specific Image (Optional)", type=["jpg", "jpeg", "png", "webp"])
 
 if uploaded_file is None:
-    st.info("👈 Sidebar se PPTX file upload karein scanning start karne ke liye.")
+    st.info("👈 Sidebar se PPTX file upload karein search start karne ke liye.")
 else:
     try:
         prs = Presentation(uploaded_file)
@@ -109,15 +90,14 @@ else:
                     try:
                         image_bytes = shape.image.blob
                         with Image.open(io.BytesIO(image_bytes)) as img:
-                            geo_key = extract_geo_coordinates(img)
-                            v_hash = get_visual_hash(img)
+                            d_hash, p_hash = get_visual_fingerprint(img)
                             b64_str = get_thumbnail_base64(img)
                             
                             ppt_images.append({
                                 "slide": slide_index + 1,
                                 "img_num": img_count,
-                                "geo": geo_key,
-                                "hash": v_hash,
+                                "dhash": d_hash,
+                                "phash": p_hash,
                                 "b64_img": b64_str
                             })
                     except Exception:
@@ -127,76 +107,68 @@ else:
         status_text.empty()
         gc.collect()
 
-        tab1, tab2 = st.tabs(["📋 Duplicate Report", "🔍 Image / Geo Search"])
+        tab1, tab2 = st.tabs(["📋 PPT Duplicates Report", "🔍 Search Specific Image"])
 
-        # TAB 1: Duplicate Identification
+        # TAB 1: Duplicates Report
         with tab1:
-            geo_groups = collections.defaultdict(list)
-            hash_groups = collections.defaultdict(list)
-            
+            hashes = collections.defaultdict(list)
             for item in ppt_images:
-                if item["geo"]:
-                    geo_groups[item["geo"]].append(item)
-                hash_groups[item["hash"]].append(item)
-
+                hashes[str(item["dhash"])].append(item)
+                
             duplicates_found = False
-            processed_slides = set()
-
-            # Geo-tag duplicates
-            for geo, locations in geo_groups.items():
+            for img_hash, locations in hashes.items():
                 if len(locations) > 1:
                     duplicates_found = True
-                    st.warning(f"**Duplicate Geo-Tag Found** (Lat/Long: `{geo}`) — {len(locations)} occurrences")
+                    st.warning(f"**Duplicate Image Found** ({len(locations)} occurrences)")
+                    
                     c1, c2 = st.columns([1, 5])
                     with c1:
-                        st.markdown(f'<img src="{locations[0]["b64_img"]}" class="zoom-img" tabindex="0">', unsafe_allow_html=True)
+                        st.markdown(
+                            f'<img src="{locations[0]["b64_img"]}" class="zoom-img" tabindex="0">', 
+                            unsafe_allow_html=True
+                        )
+
                     with c2:
                         for loc in locations:
-                            processed_slides.add((loc["slide"], loc["img_num"]))
                             st.write(f"• **Slide {loc['slide']}** → Image #{loc['img_num']}")
                     st.divider()
 
             if not duplicates_found:
-                st.success("No duplicate images found.")
+                st.success("No duplicate images found in this PPT.")
 
-        # TAB 2: Custom Search (Geo + Visual Dual Verification)
+        # TAB 2: Custom Search (Strict Visual Matching)
         with tab2:
             if search_image_file is None:
-                st.info("👈 Upload an image in sidebar to search.")
+                st.info("👈 Upload an image in the sidebar to search.")
             else:
                 with Image.open(search_image_file) as target_img:
-                    target_geo = extract_geo_coordinates(target_img)
-                    target_hash = get_visual_hash(target_img)
+                    target_dhash, target_phash = get_visual_fingerprint(target_img)
                     target_b64 = get_thumbnail_base64(target_img)
                 
+                # Strict threshold check (Both dhash & phash must match closely for 95%+ accuracy)
                 matches = []
-                match_type = ""
-
-                # Step 1: Geo Matching (Highest Accuracy)
-                if target_geo:
-                    matches = [item for item in ppt_images if item["geo"] == target_geo]
-                    if matches:
-                        match_type = f"Matched via Geo-Coordinates (`{target_geo}`)"
-
-                # Step 2: Fallback to Visual Matching if Geo fails
-                if not matches:
-                    matches = [
-                        item for item in ppt_images 
-                        if (imagehash.hex_to_hash(target_hash) - imagehash.hex_to_hash(item["hash"])) <= 2
-                    ]
-                    if matches:
-                        match_type = "Matched via Visual Image Features"
-
+                for item in ppt_images:
+                    diff_d = target_dhash - item["dhash"]
+                    diff_p = target_phash - item["phash"]
+                    
+                    # Strictly allow max difference of 1 (95% to 100% exact match)
+                    if diff_d <= 1 and diff_p <= 2:
+                        matches.append(item)
+                
                 if matches:
-                    st.success(f"**Match Found!** ({match_type}) in {len(matches)} location(s):")
+                    st.success(f"**Exact Match Found!** Found in {len(matches)} location(s):")
                     c1, c2 = st.columns([1, 5])
                     with c1:
-                        st.markdown(f'<img src="{target_b64}" class="zoom-img" tabindex="0">', unsafe_allow_html=True)
+                        st.markdown(
+                            f'<img src="{target_b64}" class="zoom-img" tabindex="0">', 
+                            unsafe_allow_html=True
+                        )
+
                     with c2:
                         for match in matches:
                             st.write(f"• **Slide {match['slide']}** → Image #{match['img_num']}")
                 else:
-                    st.error("This image or Geo-location was **NOT** found in the uploaded PPT.")
+                    st.error("❌ Yeh image is PPT me **nahi mili**. (No 95%+ visual match found)")
 
     except Exception as e:
         st.error(f"Error processing file: {e}")
