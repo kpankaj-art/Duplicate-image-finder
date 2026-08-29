@@ -6,17 +6,15 @@ from pptx import Presentation
 from PIL import Image
 import imagehash
 
-# Sidebar ko open force karne ke liye expanded state
 st.set_page_config(page_title="PPT Image Inspector", layout="wide", initial_sidebar_state="expanded")
 
-# Custom CSS: Hide Streamlit header/footer + Hide Sidebar Close Button Permanently
+# Custom CSS: Toolbar hide rakhega aur Sidebar Collapse Button hide kar dega
 st.markdown("""
     <style>
-    /* Hide top share/github toolbar icons and footer */
     [data-testid="stToolbar"] {display: none !important;}
     footer {visibility: hidden !important;}
     
-    /* DISABLE/HIDE Left Sidebar Hide/Collapse Arrow Icon completely */
+    /* Permanent Sidebar: Disable Hide Arrow */
     [data-testid="stSidebarCollapseButton"] {display: none !important;}
     button[title="Collapse sidebar"] {display: none !important;}
     
@@ -25,7 +23,7 @@ st.markdown("""
     h1 {font-size: 1.8rem !important; margin-bottom: 0.5rem;}
     .stAlert {padding: 0.5rem 1rem; margin-bottom: 0.5rem;}
     
-    /* Image Lightbox Styling (Click to Full View) */
+    /* Image Lightbox Styling */
     .zoom-img {
         width: 120px;
         border-radius: 5px;
@@ -54,7 +52,7 @@ def get_image_as_base64(img):
     img_str = base64.b64encode(buffered.getvalue()).decode()
     return f"data:image/png;base64,{img_str}"
 
-# --- SIDEBAR (PERMANENT OPEN) ---
+# --- SIDEBAR ---
 with st.sidebar:
     st.header("⚙️ Controls")
     uploaded_file = st.file_uploader("1. PPTX File Upload", type=["pptx"])
