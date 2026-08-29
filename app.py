@@ -7,7 +7,7 @@ from pptx import Presentation
 from PIL import Image
 import imagehash
 
-st.set_page_config(page_title="Exact Image Matcher", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="Exact Visual Matcher", layout="wide", initial_sidebar_state="expanded")
 
 st.markdown("""
     <style>
@@ -41,21 +41,27 @@ st.markdown("""
 
 st.title("🖼️ PPT Visual-Only Exact Image Search")
 
+# FIXED: Auto Convert RGBA/PNG to RGB before saving as JPEG
 def get_thumbnail_base64(img, max_size=(300, 300)):
     thumb = img.copy()
+    if thumb.mode in ("RGBA", "P"):
+        thumb = thumb.convert("RGB")
     thumb.thumbnail(max_size)
     buffered = io.BytesIO()
     thumb.save(buffered, format="JPEG", quality=75)
     img_str = base64.b64encode(buffered.getvalue()).decode()
     return f"data:image/jpeg;base64,{img_str}"
 
-# Purely Visual Feature Extraction (Ignores bottom 35% GPS Stamp completely)
+# Visual Feature Extraction (Ignores bottom 35% GPS Overlay)
 def get_visual_fingerprint(img):
+    if img.mode in ("RGBA", "P"):
+        img = img.convert("RGB")
+    
     w, h = img.size
-    # Crop top 65% area to focus ONLY on actual scene/photos
+    # Crop top 65% area to exclude bottom map overlay
     clean_photo = img.crop((0, 0, w, int(h * 0.65)))
     
-    # Precise Difference Hashing for exact matching
+    # Calculate dual structural hashes for high precision
     d_hash = imagehash.dhash(clean_photo.resize((128, 128)))
     p_hash = imagehash.phash(clean_photo.resize((128, 128)))
     
@@ -109,7 +115,7 @@ else:
 
         tab1, tab2 = st.tabs(["📋 PPT Duplicates Report", "🔍 Search Specific Image"])
 
-        # TAB 1: Duplicates Report
+        # TAB 1: Internal Duplicates
         with tab1:
             hashes = collections.defaultdict(list)
             for item in ppt_images:
@@ -136,27 +142,26 @@ else:
             if not duplicates_found:
                 st.success("No duplicate images found in this PPT.")
 
-        # TAB 2: Custom Search (Strict Visual Matching)
+        # TAB 2: Custom Image Search (Exact 95%+ Visual Filter)
         with tab2:
             if search_image_file is None:
-                st.info("👈 Upload an image in the sidebar to search.")
+                st.info("👈 Side menu me target image upload karein search ke liye.")
             else:
                 with Image.open(search_image_file) as target_img:
                     target_dhash, target_phash = get_visual_fingerprint(target_img)
                     target_b64 = get_thumbnail_base64(target_img)
                 
-                # Strict threshold check (Both dhash & phash must match closely for 95%+ accuracy)
                 matches = []
                 for item in ppt_images:
                     diff_d = target_dhash - item["dhash"]
                     diff_p = target_phash - item["phash"]
                     
-                    # Strictly allow max difference of 1 (95% to 100% exact match)
+                    # Strict Visual Match Logic (Diff <= 1 means 95% to 100% same content)
                     if diff_d <= 1 and diff_p <= 2:
                         matches.append(item)
                 
                 if matches:
-                    st.success(f"**Exact Match Found!** Found in {len(matches)} location(s):")
+                    st.success(f"**Exact Visual Match Found!** Found in {len(matches)} location(s):")
                     c1, c2 = st.columns([1, 5])
                     with c1:
                         st.markdown(
