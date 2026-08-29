@@ -1,54 +1,35 @@
 import collections
 import io
-import re
-import os
-import gdown
 import streamlit as st
 from pptx import Presentation
 from PIL import Image
 import imagehash
 
-st.set_page_config(page_title="Large PPT Duplicate Finder", layout="wide")
-st.title("PPT Duplicate Image Finder (Large Files / No Limit)")
+st.set_page_config(page_title="PPT Duplicate Image Finder", layout="wide")
 
-st.subheader("Option 1: Direct File Upload (Max 200MB)")
+st.title("PPT Duplicate Image Finder (Up to 2GB)")
+st.write("Apni heavy PPT file direct upload karein aur duplicate images scan karein.")
+
+# Direct File Uploader
 uploaded_file = st.file_uploader("PPTX File Upload Karein", type=["pptx"])
 
-st.subheader("Option 2: Google Drive Link (2GB+ Files Ke Liye)")
-gdrive_url = st.text_input("PPT File Ka Public Google Drive Link Yahan Paste Karein:")
-
-file_to_process = None
-
 if uploaded_file is not None:
-    file_to_process = uploaded_file
-elif gdrive_url:
-    if st.button("Drive File Process Karein"):
-        with st.spinner("Google Drive se file download ho rahi hai..."):
-            file_id = re.search(r'[-\w]{25,}', gdrive_url)
-            if file_id:
-                download_url = f'https://drive.google.com/uc?id={file_id.group(0)}'
-                output_path = "temp_ppt.pptx"
-                gdown.download(download_url, output_path, quiet=False)
-                file_to_process = output_path
-            else:
-                st.error("Invalid Google Drive Link! Kripya 'Anyone with the link' access wali file ka link daalein.")
-
-if file_to_process:
-    st.info("Scanning chal rahi hai...")
+    st.info("File badi hone ke karan scanning me thoda time lag sakta hai, kripya wait karein...")
     
     try:
-        prs = Presentation(file_to_process)
+        prs = Presentation(uploaded_file)
         hashes = collections.defaultdict(list)
 
         for slide_index, slide in enumerate(prs.slides):
             img_count = 0
             for shape in slide.shapes:
-                if shape.shape_type == 13:  # Picture
+                if shape.shape_type == 13:  # Picture shape
                     img_count += 1
                     try:
                         image_bytes = shape.image.blob
                         img = Image.open(io.BytesIO(image_bytes))
                         
+                        # Memory handle karne ke liye image resize
                         small_img = img.resize((128, 128))
                         img_hash = str(imagehash.average_hash(small_img))
                         
@@ -78,8 +59,7 @@ if file_to_process:
                 st.divider()
 
         if not duplicates_found:
-            st.success("Kisi bhi slide me koi duplicate image nahi mili.")
+            st.success("Badhai ho! Kisi bhi slide me koi duplicate image nahi mili.")
 
-    finally:
-        if isinstance(file_to_process, str) and os.path.exists(file_to_process):
-            os.remove(file_to_process)
+    except Exception as e:
+        st.error(f"File process karne me dikkat aayi: {e}")
