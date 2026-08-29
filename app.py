@@ -145,7 +145,7 @@ else:
         # TAB 2: Custom Image Search (Exact 95%+ Visual Filter)
         with tab2:
             if search_image_file is None:
-                st.info("👈 Upload the target image for the search in the side menu.")
+                st.info("👈 Side menu me target image upload karein search ke liye.")
             else:
                 with Image.open(search_image_file) as target_img:
                     target_dhash, target_phash = get_visual_fingerprint(target_img)
@@ -173,7 +173,7 @@ else:
                         for match in matches:
                             st.write(f"• **Slide {match['slide']}** → Image #{match['img_num']}")
                 else:
-                    st.error("❌ This Image not found in PPT )
+                    st.error("❌ Yeh image is PPT me **nahi mili**. (No 95%+ visual match found)")
 
     except Exception as e:
         st.error(f"Error processing file: {e}")
