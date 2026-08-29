@@ -2,12 +2,13 @@ import collections
 import io
 import base64
 import gc
+import cv2
+import numpy as np
 import streamlit as st
 from pptx import Presentation
 from PIL import Image
-import imagehash
 
-st.set_page_config(page_title="Exact Visual Matcher", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="Smart Image Matcher", layout="wide", initial_sidebar_state="expanded")
 
 st.markdown("""
     <style>
@@ -39,9 +40,8 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-st.title("🖼️ PPT Visual-Only Exact Image Search")
+st.title("🖼️ Smart Feature-Based Image Search")
 
-# FIXED: Auto Convert RGBA/PNG to RGB before saving as JPEG
 def get_thumbnail_base64(img, max_size=(300, 300)):
     thumb = img.copy()
     if thumb.mode in ("RGBA", "P"):
@@ -52,20 +52,28 @@ def get_thumbnail_base64(img, max_size=(300, 300)):
     img_str = base64.b64encode(buffered.getvalue()).decode()
     return f"data:image/jpeg;base64,{img_str}"
 
-# Visual Feature Extraction (Ignores bottom 35% GPS Overlay)
-def get_visual_fingerprint(img):
-    if img.mode in ("RGBA", "P"):
-        img = img.convert("RGB")
-    
-    w, h = img.size
-    # Crop top 65% area to exclude bottom map overlay
-    clean_photo = img.crop((0, 0, w, int(h * 0.65)))
-    
-    # Calculate dual structural hashes for high precision
-    d_hash = imagehash.dhash(clean_photo.resize((128, 128)))
-    p_hash = imagehash.phash(clean_photo.resize((128, 128)))
-    
-    return d_hash, p_hash
+# Convert PIL Image to OpenCV Grayscale
+def pil_to_cv2(pil_img):
+    if pil_img.mode in ("RGBA", "P"):
+        pil_img = pil_img.convert("RGB")
+    open_cv_image = np.array(pil_img)
+    return cv2.cvtColor(open_cv_image, cv2.COLOR_RGB2GRAY)
+
+# ORB Feature Descriptor Extractor
+def get_features(cv_img):
+    orb = cv2.ORB_create(nfeatures=500)
+    kp, des = orb.detectAndCompute(cv_img, None)
+    return des
+
+# Compare two sets of feature descriptors
+def compare_features(des1, des2):
+    if des1 is None or des2 is None:
+        return 0
+    bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
+    matches = bf.match(des1, des2)
+    # Count strong feature matches
+    good_matches = [m for m in matches if m.distance < 45]
+    return len(good_matches)
 
 with st.sidebar:
     st.header("⚙️ Controls")
@@ -96,14 +104,14 @@ else:
                     try:
                         image_bytes = shape.image.blob
                         with Image.open(io.BytesIO(image_bytes)) as img:
-                            d_hash, p_hash = get_visual_fingerprint(img)
+                            cv_img = pil_to_cv2(img)
+                            des = get_features(cv_img)
                             b64_str = get_thumbnail_base64(img)
                             
                             ppt_images.append({
                                 "slide": slide_index + 1,
                                 "img_num": img_count,
-                                "dhash": d_hash,
-                                "phash": p_hash,
+                                "descriptors": des,
                                 "b64_img": b64_str
                             })
                     except Exception:
@@ -113,67 +121,37 @@ else:
         status_text.empty()
         gc.collect()
 
-        tab1, tab2 = st.tabs(["📋 PPT Duplicates Report", "🔍 Search Specific Image"])
+        st.subheader("🔍 Custom Image Match Result")
 
-        # TAB 1: Internal Duplicates
-        with tab1:
-            hashes = collections.defaultdict(list)
+        if search_image_file is None:
+            st.info("👈 Upload an image in the sidebar to search.")
+        else:
+            with Image.open(search_image_file) as target_img:
+                target_cv = pil_to_cv2(target_img)
+                target_des = get_features(target_cv)
+                target_b64 = get_thumbnail_base64(target_img)
+            
+            matches = []
             for item in ppt_images:
-                hashes[str(item["dhash"])].append(item)
-                
-            duplicates_found = False
-            for img_hash, locations in hashes.items():
-                if len(locations) > 1:
-                    duplicates_found = True
-                    st.warning(f"**Duplicate Image Found** ({len(locations)} occurrences)")
-                    
-                    c1, c2 = st.columns([1, 5])
-                    with c1:
-                        st.markdown(
-                            f'<img src="{locations[0]["b64_img"]}" class="zoom-img" tabindex="0">', 
-                            unsafe_allow_html=True
-                        )
+                match_score = compare_features(target_des, item["descriptors"])
+                # Match threshold: If 25+ unique visual features match
+                if match_score >= 25:
+                    matches.append((item, match_score))
+            
+            if matches:
+                st.success(f"**Exact Match Found!** Found in {len(matches)} location(s):")
+                c1, c2 = st.columns([1, 5])
+                with c1:
+                    st.markdown(
+                        f'<img src="{target_b64}" class="zoom-img" tabindex="0">', 
+                        unsafe_allow_html=True
+                    )
 
-                    with c2:
-                        for loc in locations:
-                            st.write(f"• **Slide {loc['slide']}** → Image #{loc['img_num']}")
-                    st.divider()
-
-            if not duplicates_found:
-                st.success("No duplicate images found in this PPT.")
-
-        # TAB 2: Custom Image Search (Exact 95%+ Visual Filter)
-        with tab2:
-            if search_image_file is None:
-                st.info("👈 Side menu me target image upload karein search ke liye.")
+                with c2:
+                    for match_item, score in matches:
+                        st.write(f"• **Slide {match_item['slide']}** → Image #{match_item['img_num']} *(Match Confidence: {score} features)*")
             else:
-                with Image.open(search_image_file) as target_img:
-                    target_dhash, target_phash = get_visual_fingerprint(target_img)
-                    target_b64 = get_thumbnail_base64(target_img)
-                
-                matches = []
-                for item in ppt_images:
-                    diff_d = target_dhash - item["dhash"]
-                    diff_p = target_phash - item["phash"]
-                    
-                    # Strict Visual Match Logic (Diff <= 1 means 95% to 100% same content)
-                    if diff_d <= 1 and diff_p <= 2:
-                        matches.append(item)
-                
-                if matches:
-                    st.success(f"**Exact Visual Match Found!** Found in {len(matches)} location(s):")
-                    c1, c2 = st.columns([1, 5])
-                    with c1:
-                        st.markdown(
-                            f'<img src="{target_b64}" class="zoom-img" tabindex="0">', 
-                            unsafe_allow_html=True
-                        )
-
-                    with c2:
-                        for match in matches:
-                            st.write(f"• **Slide {match['slide']}** → Image #{match['img_num']}")
-                else:
-                    st.error("❌ Yeh image is PPT me **nahi mili**. (No 95%+ visual match found)")
+                st.error("❌ Yeh image is PPT me **nahi mili**.")
 
     except Exception as e:
         st.error(f"Error processing file: {e}")
