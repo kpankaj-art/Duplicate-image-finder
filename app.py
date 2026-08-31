@@ -92,25 +92,32 @@ def compare_features(des1, des2):
     good_matches = [m for m in matches if m.distance < 40]
     return len(good_matches)
 
-# Helper function to format score visually
 def format_score_html(score):
     if score >= 60:
         return f'<span class="score-badge-high">Score: {score} features</span>'
     return f'<span class="score-badge-normal">Score: <b>{score}</b> features</span>'
 
-# PPT Extraction with Slide Counter
-def process_ppt_file(ppt_file):
+# PPT Extraction with LIVE Progress Tracking
+def process_ppt_file_with_progress(ppt_file, label_prefix="Main PPT"):
     prs = Presentation(ppt_file)
     ppt_images = []
     total_slides = len(prs.slides)
     
+    progress_bar = st.progress(0)
+    status_text = st.empty()
+    
     for slide_index, slide in enumerate(prs.slides):
+        current_slide_num = slide_index + 1
+        
+        # Live status update on UI
+        status_text.text(f"Processing {label_prefix}: Slide {current_slide_num} of {total_slides}...")
+        progress_bar.progress(current_slide_num / total_slides)
+        
         picture_shapes = []
         for shape in slide.shapes:
             if shape.shape_type == 13: # Shape Picture
                 picture_shapes.append((shape.top, shape.left, shape))
         
-        # Positional sorting: Top-to-Bottom, Left-to-Right
         picture_shapes.sort(key=lambda x: (x[0], x[1]))
         
         for img_count, (_, _, shape) in enumerate(picture_shapes, start=1):
@@ -122,13 +129,18 @@ def process_ppt_file(ppt_file):
                     b64_str = get_thumbnail_base64(img)
                     
                     ppt_images.append({
-                        "slide": slide_index + 1,
+                        "slide": current_slide_num,
                         "img_num": img_count,
                         "descriptors": des,
                         "b64_img": b64_str
                     })
             except Exception:
                 continue
+                
+    # Clear progress elements once done
+    progress_bar.empty()
+    status_text.empty()
+    
     return ppt_images, total_slides
 
 # --- SIDEBAR CONTROLS ---
@@ -158,15 +170,11 @@ if main_ppt_file is None:
     st.info("Please upload the Main PPT File in the sidebar to proceed.")
 else:
     if "main_ppt_images" not in st.session_state or st.session_state.get("main_ppt_name") != main_ppt_file.name:
-        prs_temp = Presentation(main_ppt_file)
-        temp_slide_count = len(prs_temp.slides)
-
-        with st.spinner(f"Processing Main PPT File ({temp_slide_count} Slides)..."):
-            main_images, main_slide_count = process_ppt_file(main_ppt_file)
-            st.session_state["main_ppt_images"] = main_images
-            st.session_state["main_ppt_slides"] = main_slide_count
-            st.session_state["main_ppt_name"] = main_ppt_file.name
-            st.success(f"Main PPT File processed successfully ({main_slide_count} slides, {len(main_images)} images indexed).")
+        main_images, main_slide_count = process_ppt_file_with_progress(main_ppt_file, label_prefix="Main PPT File")
+        st.session_state["main_ppt_images"] = main_images
+        st.session_state["main_ppt_slides"] = main_slide_count
+        st.session_state["main_ppt_name"] = main_ppt_file.name
+        st.success(f"Main PPT File processed successfully ({main_slide_count} slides, {len(main_images)} images indexed).")
 
     main_images = st.session_state["main_ppt_images"]
     main_slide_count = st.session_state["main_ppt_slides"]
@@ -221,53 +229,49 @@ else:
             if target_ppt_file is None:
                 st.warning("Please upload the Target PPT File in the sidebar.")
             else:
-                prs_target_temp = Presentation(target_ppt_file)
-                target_temp_count = len(prs_target_temp.slides)
-
-                with st.spinner(f"Executing batch search across Target PPT ({target_temp_count} Slides)..."):
-                    target_images, target_slide_count = process_ppt_file(target_ppt_file)
-                    
-                    if not target_images:
-                        st.error("No images found in the Target PPT File.")
-                    else:
-                        found_count = 0
-                        for target_item in target_images:
-                            raw_matches = []
-                            for main_item in main_images:
-                                score = compare_features(target_item["descriptors"], main_item["descriptors"])
-                                if score >= 35:
-                                    raw_matches.append((main_item, score))
-                            
-                            raw_matches.sort(key=lambda x: x[1], reverse=True)
-                            
-                            if raw_matches:
-                                highest_score = raw_matches[0][1]
-                                strict_matches = [
-                                    (item, score) for item, score in raw_matches 
-                                    if score >= max(40, highest_score * 0.85)
-                                ]
-                            else:
-                                strict_matches = []
-
-                            # Hide non-matching items completely
-                            if strict_matches:
-                                found_count += 1
-                                st.markdown(f"#### Target PPT → Slide {target_item['slide']} (Image #{target_item['img_num']})")
-                                c1, c2 = st.columns([1, 6])
-                                
-                                with c1:
-                                    st.markdown(f'<img src="{target_item["b64_img"]}" class="zoom-img" tabindex="0">', unsafe_allow_html=True)
-                                
-                                with c2:
-                                    for main_match, score in strict_matches:
-                                        score_html = format_score_html(score)
-                                        st.markdown(f"Matched in **Main PPT** → **Slide {main_match['slide']}** (Image #{main_match['img_num']}) — {score_html}", unsafe_allow_html=True)
-                                
-                                st.divider()
-
-                        if found_count > 0:
-                            st.success(f"Batch execution completed: Successfully matched **{found_count} of {len(target_images)}** images from **{target_slide_count} Target PPT slides** against **{main_slide_count} Main PPT slides**.")
+                target_images, target_slide_count = process_ppt_file_with_progress(target_ppt_file, label_prefix="Target PPT File")
+                
+                if not target_images:
+                    st.error("No images found in the Target PPT File.")
+                else:
+                    found_count = 0
+                    for target_item in target_images:
+                        raw_matches = []
+                        for main_item in main_images:
+                            score = compare_features(target_item["descriptors"], main_item["descriptors"])
+                            if score >= 35:
+                                raw_matches.append((main_item, score))
+                        
+                        raw_matches.sort(key=lambda x: x[1], reverse=True)
+                        
+                        if raw_matches:
+                            highest_score = raw_matches[0][1]
+                            strict_matches = [
+                                (item, score) for item, score in raw_matches 
+                                if score >= max(40, highest_score * 0.85)
+                            ]
                         else:
-                            st.warning("No matching images were found between Target PPT and Main PPT.")
+                            strict_matches = []
+
+                        # Hide non-matching items completely
+                        if strict_matches:
+                            found_count += 1
+                            st.markdown(f"#### Target PPT → Slide {target_item['slide']} (Image #{target_item['img_num']})")
+                            c1, c2 = st.columns([1, 6])
+                            
+                            with c1:
+                                st.markdown(f'<img src="{target_item["b64_img"]}" class="zoom-img" tabindex="0">', unsafe_allow_html=True)
+                            
+                            with c2:
+                                for main_match, score in strict_matches:
+                                    score_html = format_score_html(score)
+                                    st.markdown(f"Matched in **Main PPT** → **Slide {main_match['slide']}** (Image #{main_match['img_num']}) — {score_html}", unsafe_allow_html=True)
+                            
+                            st.divider()
+
+                    if found_count > 0:
+                        st.success(f"Batch execution completed: Successfully matched **{found_count} of {len(target_images)}** images from **{target_slide_count} Target PPT slides** against **{main_slide_count} Main PPT slides**.")
+                    else:
+                        st.warning("No matching images were found between Target PPT and Main PPT.")
         else:
             st.info("Upload the Target PPT File and click 'Start Matching Process'.")
