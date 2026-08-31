@@ -16,8 +16,14 @@ st.markdown("""
     footer {visibility: hidden !important;}
     [data-testid="stSidebarCollapseButton"] {display: none !important;}
     button[title="Collapse sidebar"] {display: none !important;}
-    .block-container {padding-top: 1.5rem; padding-bottom: 0rem;}
-    [data-testid="stSidebar"] {padding-top: 0rem;}
+    
+    /* Layout & Sidebar Spacing Improvements */
+    .block-container {padding-top: 1rem; padding-bottom: 0rem;}
+    [data-testid="stSidebar"] {padding-top: 0.5rem;}
+    [data-testid="stSidebar"] .element-container {margin-bottom: 0.3rem !important;}
+    [data-testid="stSidebar"] hr {margin-top: 0.5rem !important; margin-bottom: 0.5rem !important;}
+    [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p {margin-bottom: 0.2rem !important;}
+    
     h1 {font-size: 1.8rem !important; margin-bottom: 0.5rem;}
     .stAlert {padding: 0.5rem 1rem; margin-bottom: 0.5rem;}
     .zoom-img {
@@ -113,11 +119,9 @@ with st.sidebar:
         ["🖼️ Single Image Search", "📊 PPT to PPT Search"],
         index=0
     )
-    st.divider()
-
-    # Base PPT Uploader (Always active)
+    
+    # Base PPT Uploader
     main_ppt_file = st.file_uploader("1. Badi PPT Upload (600 Images)", type=["pptx"])
-    st.divider()
 
     # Dynamic Inputs based on Mode Selection
     if search_mode == "🖼️ Single Image Search":
@@ -127,7 +131,6 @@ with st.sidebar:
         target_ppt_file = st.file_uploader("2. Upload Chhoti PPT (10 Slides)", type=["pptx"])
         single_img_file = None
 
-    st.divider()
     search_clicked = st.button("🚀 Start Match Search", use_container_width=True, type="primary")
 
 # --- MAIN LOGIC ---
