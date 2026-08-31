@@ -8,7 +8,7 @@ import streamlit as st
 from pptx import Presentation
 from PIL import Image
 
-st.set_page_config(page_title="Strict Image Matcher (Best Matches Only)", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="Manual Search Matcher", layout="wide", initial_sidebar_state="expanded")
 
 st.markdown("""
     <style>
@@ -75,78 +75,94 @@ with st.sidebar:
     st.header("⚙️ Controls")
     uploaded_file = st.file_uploader("1. PPTX File Upload", type=["pptx"])
     st.divider()
-    search_image_file = st.file_uploader("2. Search Specific Image (Optional)", type=["jpg", "jpeg", "png", "webp"])
+    search_image_file = st.file_uploader("2. Search Specific Image", type=["jpg", "jpeg", "png", "webp"])
+    
+    # MANUAL SEARCH BUTTON
+    search_clicked = st.button("🚀 Start Search", use_container_width=True, type="primary")
 
 if uploaded_file is None:
-    st.info("👈 Sidebar se PPTX file upload karein search start karne ke liye.")
+    # Reset session state if PPT is removed
+    st.session_state.pop("ppt_images", None)
+    st.session_state.pop("ppt_file_name", None)
+    st.info("👈 Sidebar se PPTX file upload karein process start karne ke liye.")
 else:
-    try:
-        prs = Presentation(uploaded_file)
-        ppt_images = []
-        
-        total_slides = len(prs.slides)
-        progress_bar = st.progress(0)
-        status_text = st.empty()
-
-        for slide_index, slide in enumerate(prs.slides):
-            progress = (slide_index + 1) / total_slides
-            progress_bar.progress(progress)
-            status_text.text(f"Scanning Slide {slide_index + 1} of {total_slides}...")
+    # Check if PPT is already scanned into Session Memory
+    if "ppt_images" not in st.session_state or st.session_state.get("ppt_file_name") != uploaded_file.name:
+        try:
+            prs = Presentation(uploaded_file)
+            ppt_images = []
             
-            # Slide ke picture shapes ko screen position ke mutabiq sort karein
-            picture_shapes = []
-            for shape in slide.shapes:
-                if shape.shape_type == 13: # Picture
-                    picture_shapes.append((shape.top, shape.left, shape))
-            
-            # Visual order: Top-to-Bottom, Left-to-Right (Left = Image #1, Right = Image #2)
-            picture_shapes.sort(key=lambda x: (x[0], x[1]))
-            
-            for img_count, (_, _, shape) in enumerate(picture_shapes, start=1):
-                try:
-                    image_bytes = shape.image.blob
-                    with Image.open(io.BytesIO(image_bytes)) as img:
-                        cv_img = pil_to_cv2(img)
-                        des = get_features(cv_img)
-                        b64_str = get_thumbnail_base64(img)
-                        
-                        ppt_images.append({
-                            "slide": slide_index + 1,
-                            "img_num": img_count,
-                            "descriptors": des,
-                            "b64_img": b64_str
-                        })
-                except Exception:
-                    continue
+            total_slides = len(prs.slides)
+            progress_bar = st.progress(0)
+            status_text = st.empty()
 
-        progress_bar.empty()
-        status_text.empty()
-        gc.collect()
+            for slide_index, slide in enumerate(prs.slides):
+                progress = (slide_index + 1) / total_slides
+                progress_bar.progress(progress)
+                status_text.text(f"Scanning Slide {slide_index + 1} of {total_slides}...")
+                
+                picture_shapes = []
+                for shape in slide.shapes:
+                    if shape.shape_type == 13: # Picture
+                        picture_shapes.append((shape.top, shape.left, shape))
+                
+                # Visual positional sorting (Left = #1, Right = #2)
+                picture_shapes.sort(key=lambda x: (x[0], x[1]))
+                
+                for img_count, (_, _, shape) in enumerate(picture_shapes, start=1):
+                    try:
+                        image_bytes = shape.image.blob
+                        with Image.open(io.BytesIO(image_bytes)) as img:
+                            cv_img = pil_to_cv2(img)
+                            des = get_features(cv_img)
+                            b64_str = get_thumbnail_base64(img)
+                            
+                            ppt_images.append({
+                                "slide": slide_index + 1,
+                                "img_num": img_count,
+                                "descriptors": des,
+                                "b64_img": b64_str
+                            })
+                    except Exception:
+                        continue
 
-        st.subheader("🔍 Match Results (Sorted by Highest Score)")
+            progress_bar.empty()
+            status_text.empty()
+            gc.collect()
 
+            # Save scanned features to Session State
+            st.session_state["ppt_images"] = ppt_images
+            st.session_state["ppt_file_name"] = uploaded_file.name
+            st.success(f"✅ PPT Scan Completed ({len(ppt_images)} images indexed).")
+
+        except Exception as e:
+            st.error(f"Error processing file: {e}")
+
+    # Display results area
+    st.subheader("🔍 Match Results")
+
+    # Perform search ONLY when button is clicked
+    if search_clicked:
         if search_image_file is None:
-            st.info("👈 Upload an image in the sidebar to search.")
+            st.warning("⚠️ Pehle sidebar me Search Image upload karein, phir 'Start Search' dabayein.")
         else:
             with Image.open(search_image_file) as target_img:
                 target_cv = pil_to_cv2(target_img)
                 target_des = get_features(target_cv)
                 target_b64 = get_thumbnail_base64(target_img)
             
+            ppt_images = st.session_state.get("ppt_images", [])
             raw_matches = []
+            
             for item in ppt_images:
                 match_score = compare_features(target_des, item["descriptors"])
-                if match_score >= 35:  # Base threshold
+                if match_score >= 35:
                     raw_matches.append((item, match_score))
             
-            # Score ke according High to Low Sort karein
             raw_matches.sort(key=lambda x: x[1], reverse=True)
 
             if raw_matches:
                 highest_score = raw_matches[0][1]
-                
-                # Sirf highest score ke 85% range me aane wale exact matches hi rakhein
-                # Isse low score wale weak matches ignore ho jayenge
                 strict_matches = [
                     (item, score) for item, score in raw_matches 
                     if score >= max(40, highest_score * 0.85)
@@ -165,6 +181,5 @@ else:
                         st.write(f"• **Slide {match_item['slide']}** → Image #{match_item['img_num']} *(Match Score: **{score}** features)*")
             else:
                 st.error("❌ Koi bhi **90%-100% exact match** nahi mila.")
-
-    except Exception as e:
-        st.error(f"Error processing file: {e}")
+    else:
+        st.info("👉 Sidebar me image upload karne ke baad **'🚀 Start Search'** button par click karein.")
