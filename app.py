@@ -8,7 +8,7 @@ import streamlit as st
 from pptx import Presentation
 from PIL import Image
 
-st.set_page_config(page_title="Strict Image Matcher (90%-100%)", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="Strict Image Matcher (Best Matches Only)", layout="wide", initial_sidebar_state="expanded")
 
 st.markdown("""
     <style>
@@ -68,7 +68,6 @@ def compare_features(des1, des2):
         return 0
     bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
     matches = bf.match(des1, des2)
-    # Strict matching distance filter
     good_matches = [m for m in matches if m.distance < 40]
     return len(good_matches)
 
@@ -94,31 +93,37 @@ else:
             progress_bar.progress(progress)
             status_text.text(f"Scanning Slide {slide_index + 1} of {total_slides}...")
             
-            img_count = 0
+            # Slide ke picture shapes ko screen position ke mutabiq sort karein
+            picture_shapes = []
             for shape in slide.shapes:
-                if shape.shape_type == 13:
-                    img_count += 1
-                    try:
-                        image_bytes = shape.image.blob
-                        with Image.open(io.BytesIO(image_bytes)) as img:
-                            cv_img = pil_to_cv2(img)
-                            des = get_features(cv_img)
-                            b64_str = get_thumbnail_base64(img)
-                            
-                            ppt_images.append({
-                                "slide": slide_index + 1,
-                                "img_num": img_count,
-                                "descriptors": des,
-                                "b64_img": b64_str
-                            })
-                    except Exception:
-                        continue
+                if shape.shape_type == 13: # Picture
+                    picture_shapes.append((shape.top, shape.left, shape))
+            
+            # Visual order: Top-to-Bottom, Left-to-Right (Left = Image #1, Right = Image #2)
+            picture_shapes.sort(key=lambda x: (x[0], x[1]))
+            
+            for img_count, (_, _, shape) in enumerate(picture_shapes, start=1):
+                try:
+                    image_bytes = shape.image.blob
+                    with Image.open(io.BytesIO(image_bytes)) as img:
+                        cv_img = pil_to_cv2(img)
+                        des = get_features(cv_img)
+                        b64_str = get_thumbnail_base64(img)
+                        
+                        ppt_images.append({
+                            "slide": slide_index + 1,
+                            "img_num": img_count,
+                            "descriptors": des,
+                            "b64_img": b64_str
+                        })
+                except Exception:
+                    continue
 
         progress_bar.empty()
         status_text.empty()
         gc.collect()
 
-        st.subheader("🔍 90%-100% Exact Match Result")
+        st.subheader("🔍 Match Results (Sorted by Highest Score)")
 
         if search_image_file is None:
             st.info("👈 Upload an image in the sidebar to search.")
@@ -128,19 +133,26 @@ else:
                 target_des = get_features(target_cv)
                 target_b64 = get_thumbnail_base64(target_img)
             
-            matches = []
+            raw_matches = []
             for item in ppt_images:
                 match_score = compare_features(target_des, item["descriptors"])
-                
-                # STRICT THRESHOLD: Sirf 40+ matched features wale (90%-100% match) accept honge
-                if match_score >= 40:
-                    matches.append((item, match_score))
+                if match_score >= 35:  # Base threshold
+                    raw_matches.append((item, match_score))
             
-            # Sort matches so highest score comes on top
-            matches.sort(key=lambda x: x[1], reverse=True)
+            # Score ke according High to Low Sort karein
+            raw_matches.sort(key=lambda x: x[1], reverse=True)
 
-            if matches:
-                st.success(f"**Exact 90%-100% Match Found!** Found in {len(matches)} location(s):")
+            if raw_matches:
+                highest_score = raw_matches[0][1]
+                
+                # Sirf highest score ke 85% range me aane wale exact matches hi rakhein
+                # Isse low score wale weak matches ignore ho jayenge
+                strict_matches = [
+                    (item, score) for item, score in raw_matches 
+                    if score >= max(40, highest_score * 0.85)
+                ]
+
+                st.success(f"**Best Match Found!** Total Top Matches: {len(strict_matches)}")
                 c1, c2 = st.columns([1, 5])
                 with c1:
                     st.markdown(
@@ -149,8 +161,8 @@ else:
                     )
 
                 with c2:
-                    for match_item, score in matches:
-                        st.write(f"• **Slide {match_item['slide']}** → Image #{match_item['img_num']} *(Match Score: {score} features)*")
+                    for match_item, score in strict_matches:
+                        st.write(f"• **Slide {match_item['slide']}** → Image #{match_item['img_num']} *(Match Score: **{score}** features)*")
             else:
                 st.error("❌ Koi bhi **90%-100% exact match** nahi mila.")
 
